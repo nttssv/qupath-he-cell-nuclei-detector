@@ -12,6 +12,7 @@ This folder is intentionally scoped for GitHub upload: it contains only the QuPa
 - Adds QuPath measurement columns for cell area, cytoplasm area, nuclear area, N/C ratio, and nucleus morphometry.
 - Adds `_um2` area columns automatically when QuPath image calibration is available.
 - Optional before/after PNG export for each ROI.
+- In-QuPath morphometry dashboard for parenchyme, mesenchyme/stroma, nuclear area, cytoplasm area, and cytoplasm phenotype composition.
 - Class colors:
   - Nucleus: blue
   - Clear cell: green
@@ -26,6 +27,18 @@ This folder is intentionally scoped for GitHub upload: it contains only the QuPa
 | <img src="assets/before_after/demo_roi_before.png" alt="Raw H&E ROI before annotation" width="420"> | <img src="assets/before_after/demo_roi_after.png" alt="ROI after Prototype 1 overlay" width="420"> |
 
 More details: [before/after demo](docs/before_after_demo.md).
+
+## Statistics Dashboard
+
+When `Show statistics dashboard` is checked, the extension creates a visual morphometry dashboard and displays it after the run.
+
+<img src="assets/statistics_dashboard/demo_statistics_dashboard.png" alt="Prototype 1 morphometry dashboard with parenchyme, mesenchyme, nuclear, cytoplasm, and phenotype statistics" width="780">
+
+Dashboard outputs are saved under:
+
+```text
+qupath_extension_runs/<image>_<timestamp>/statistics_dashboard/
+```
 
 ## Folder Structure
 
@@ -103,7 +116,8 @@ export PROTOTYPE1_OUTPUT="/path/to/output/folder"
 3. Run `Extensions > Prototype 1 > Run on selected annotation(s)`.
 4. Keep `Display like InstanSeg detections` checked.
 5. Check `Export before/after PNGs` if you want before/after images.
-6. Open measurement tables:
+6. Keep `Show statistics dashboard` checked to display the morphometry chart in QuPath.
+7. Open measurement tables:
    - `Measure > Show detection measurements`
    - `Measure > Show annotation measurements`
 
@@ -116,6 +130,7 @@ qupath_extension_runs/<image>_<timestamp>/
 ├── before_after_png/
 ├── exported_tiles/
 ├── processed/
+├── statistics_dashboard/
 └── prototype1_qupath_run.log
 ```
 

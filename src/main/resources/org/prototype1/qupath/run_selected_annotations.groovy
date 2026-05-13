@@ -569,11 +569,11 @@ def showStatisticsDashboardDialog(File dashboardFile) {
         scroll.setFitToWidth(true)
         scroll.setPrefViewportWidth(Math.min(1150.0, image.getWidth()))
         scroll.setPrefViewportHeight(Math.min(820.0, image.getHeight()))
-        def dialog = new javafx.scene.control.Dialog()
-        dialog.setTitle("Prototype 1 Statistics Dashboard")
-        dialog.getDialogPane().setContent(scroll)
-        dialog.getDialogPane().getButtonTypes().add(javafx.scene.control.ButtonType.CLOSE)
-        dialog.show()
+        def stage = new javafx.stage.Stage()
+        stage.setTitle("Prototype 1 Statistics Dashboard")
+        stage.setScene(new javafx.scene.Scene(scroll))
+        stage.setResizable(true)
+        stage.show()
     } catch (Throwable ignored) {
         try {
             java.awt.Desktop.getDesktop().open(dashboardFile)

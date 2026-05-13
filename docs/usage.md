@@ -26,6 +26,8 @@ For other tissues or stains, use the outputs as exploratory annotations and perf
 
 The dashboard is generated as a PNG and, when QuPath is running with a GUI, shown in a QuPath dialog after the run.
 
+The dashboard window is non-blocking, so the main QuPath interface remains interactive.
+
 It summarizes:
 
 - Parenchyme area and percentage
@@ -39,6 +41,12 @@ Dashboard files are saved to:
 
 ```text
 qupath_extension_runs/<image>_<timestamp>/statistics_dashboard/
+```
+
+To reopen the newest dashboard after closing it:
+
+```text
+Extensions > Prototype 1 > Open latest statistics dashboard
 ```
 
 ## Clearing Objects

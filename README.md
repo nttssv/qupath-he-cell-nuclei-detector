@@ -26,6 +26,7 @@ The method should be treated as a tissue-specific research prototype, not a univ
 ## Features
 
 - Adds `Extensions > Prototype 1 > Run on selected annotation(s)` to QuPath.
+- Adds `Extensions > Prototype 1 > Open latest statistics dashboard` to reopen the newest dashboard PNG.
 - Runs the Python Prototype 1 pipeline on selected annotation bounding boxes.
 - Imports cell boundaries and nuclei as QuPath detection objects.
 - Adds QuPath measurement columns for cell area, cytoplasm area, nuclear area, N/C ratio, and nucleus morphometry.
@@ -57,6 +58,12 @@ Dashboard outputs are saved under:
 
 ```text
 qupath_extension_runs/<image>_<timestamp>/statistics_dashboard/
+```
+
+The dashboard opens in a non-blocking QuPath window, so you can keep interacting with the main QuPath viewer. If you close it, reopen it with:
+
+```text
+Extensions > Prototype 1 > Open latest statistics dashboard
 ```
 
 ## Folder Structure

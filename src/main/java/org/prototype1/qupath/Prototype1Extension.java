@@ -24,6 +24,12 @@ public class Prototype1Extension implements QuPathExtension {
             );
             addMenuItem(menu, runItem);
 
+            Object openDashboardItem = createMenuItem(
+                    "Open latest statistics dashboard",
+                    () -> runBundledScript(qupath, "/org/prototype1/qupath/open_latest_statistics_dashboard.groovy")
+            );
+            addMenuItem(menu, openDashboardItem);
+
             Object openReadmeItem = createMenuItem(
                     "Open README",
                     () -> runBundledScript(qupath, "/org/prototype1/qupath/open_readme.groovy")

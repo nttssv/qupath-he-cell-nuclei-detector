@@ -19,6 +19,14 @@ This folder is intentionally scoped for GitHub upload: it contains only the QuPa
   - Uncertain: orange
   - Mesenchyme/stroma: red
 
+## Before and After Example
+
+| Raw ROI | Prototype 1 overlay |
+|---|---|
+| <img src="assets/before_after/demo_roi_before.png" alt="Raw H&E ROI before annotation" width="420"> | <img src="assets/before_after/demo_roi_after.png" alt="ROI after Prototype 1 overlay" width="420"> |
+
+More details: [before/after demo](docs/before_after_demo.md).
+
 ## Folder Structure
 
 ```text

@@ -28,6 +28,7 @@ The method should be treated as a tissue-specific research prototype, not a univ
 - Adds `Extensions > Prototype 1 > Run on selected annotation(s)` to QuPath.
 - Adds `Extensions > Prototype 1 > Open latest statistics dashboard` to reopen the newest dashboard PNG.
 - Runs the Python Prototype 1 pipeline on selected annotation bounding boxes.
+- Shows a non-blocking status window with export, Python segmentation, import, dashboard, and completion stages.
 - Imports cell boundaries and nuclei as QuPath detection objects.
 - Adds QuPath measurement columns for cell area, cytoplasm area, nuclear area, N/C ratio, and nucleus morphometry.
 - Adds `_um2` area columns automatically when QuPath image calibration is available.
@@ -143,7 +144,8 @@ export PROTOTYPE1_OUTPUT="/path/to/output/folder"
 4. Keep `Display like InstanSeg detections` checked.
 5. Check `Export before/after PNGs` if you want before/after images.
 6. Keep `Show statistics dashboard` checked to display the morphometry chart in QuPath.
-7. Open measurement tables:
+7. Watch the `Prototype 1 status` window for progress through export, Python segmentation, import, and dashboard generation.
+8. Open measurement tables:
    - `Measure > Show detection measurements`
    - `Measure > Show annotation measurements`
 

@@ -17,7 +17,10 @@ import java.awt.image.BufferedImage
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.text.SimpleDateFormat
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicReference
 import java.util.regex.Pattern
+import javafx.application.Platform
 import javax.imageio.ImageIO
 
 import static qupath.lib.gui.scripting.QPEx.*
@@ -131,103 +134,270 @@ if (hasMicronCalibration) {
     logFile << "Pixel calibration: unavailable in microns; only pixel area measurements will be added.\n\n"
 }
 
-def maxRegionPixels = 4096L * 4096L
-def importedTotal = 0
-def processed = []
-def importedObjects = []
-def dashboardFiles = []
+def statusWindow = canShowDialog ? createPrototypeStatusWindow(selected.size(), runRoot) : null
+updatePrototypeStatus(statusWindow, 0.02, "Starting Prototype 1", "Run folder: ${runRoot}")
 
-selected.eachWithIndex { obj, index ->
-    def roi = obj.getROI()
-    int x0 = Math.max(0, Math.floor(roi.getBoundsX()) as int)
-    int y0 = Math.max(0, Math.floor(roi.getBoundsY()) as int)
-    int x1 = Math.min(server.getWidth(), Math.ceil(roi.getBoundsX() + roi.getBoundsWidth()) as int)
-    int y1 = Math.min(server.getHeight(), Math.ceil(roi.getBoundsY() + roi.getBoundsHeight()) as int)
-    int w = x1 - x0
-    int h = y1 - y0
+def worker = new Thread({
+    def maxRegionPixels = 4096L * 4096L
+    def importedTotal = 0
+    def processed = []
+    def importedObjects = []
+    def dashboardFiles = []
+    int totalSteps = Math.max(1, selected.size() * 6)
+    int completedSteps = 0
 
-    if (w <= 0 || h <= 0) {
-        logFile << "Skipping empty ROI ${index + 1}\n"
+    def markStatus = { String phase, String detail = "" ->
+        double progress = Math.min(0.98, Math.max(0.03, completedSteps / (double) totalSteps))
+        updatePrototypeStatus(statusWindow, progress, phase, detail)
+    }
+    def completeStep = { String phase, String detail = "" ->
+        completedSteps++
+        double progress = Math.min(0.98, completedSteps / (double) totalSteps)
+        updatePrototypeStatus(statusWindow, progress, phase, detail)
+    }
+
+    try {
+        selected.eachWithIndex { obj, index ->
+            int roiNumber = index + 1
+            def roi = obj.getROI()
+            int x0 = Math.max(0, Math.floor(roi.getBoundsX()) as int)
+            int y0 = Math.max(0, Math.floor(roi.getBoundsY()) as int)
+            int x1 = Math.min(server.getWidth(), Math.ceil(roi.getBoundsX() + roi.getBoundsWidth()) as int)
+            int y1 = Math.min(server.getHeight(), Math.ceil(roi.getBoundsY() + roi.getBoundsHeight()) as int)
+            int w = x1 - x0
+            int h = y1 - y0
+
+            if (w <= 0 || h <= 0) {
+                logFile << "Skipping empty ROI ${roiNumber}\n"
+                completeStep("Skipping empty ROI ${roiNumber}", "")
+                return
+            }
+            if ((long) w * (long) h > maxRegionPixels) {
+                throw new IllegalArgumentException("ROI ${roiNumber} is too large (${w} x ${h}). Use a smaller annotation, ideally tile-sized.")
+            }
+
+            markStatus("Exporting ROI ${roiNumber}/${selected.size()}", "${w} x ${h} px")
+            def tileFile = new File(tileDir, "${imageName}_roi${roiNumber}_x${x0}_y${y0}_w${w}_h${h}.png")
+            def request = RegionRequest.createInstance(server.getPath(), 1.0, x0, y0, w, h)
+            writeImageRegion(server, request, tileFile.getAbsolutePath())
+            logFile << "Exported ROI ${roiNumber}: ${tileFile}\n"
+            completeStep("Exported ROI ${roiNumber}/${selected.size()}", tileFile.getName())
+
+            def command = [
+                    pythonExe.getAbsolutePath(),
+                    pipelineScript.getAbsolutePath(),
+                    tileFile.getAbsolutePath(),
+                    "--output-root",
+                    processedRoot.getAbsolutePath(),
+                    "--x-offset",
+                    Integer.toString(x0),
+                    "--y-offset",
+                    Integer.toString(y0)
+            ]
+            logFile << "Command: ${command.join(' ')}\n"
+
+            markStatus("Running Python segmentation for ROI ${roiNumber}/${selected.size()}", "This is usually the longest step.")
+            def process = new ProcessBuilder(command)
+                    .directory(prototypeRoot)
+                    .redirectErrorStream(true)
+                    .start()
+            def outputBuffer = new StringBuilder()
+            def readerThread = new Thread({
+                process.getInputStream().withReader("UTF-8") { reader ->
+                    reader.eachLine { line ->
+                        outputBuffer.append(line).append(System.lineSeparator())
+                    }
+                }
+            }, "Prototype1-output-reader")
+            readerThread.setDaemon(true)
+            readerThread.start()
+            long processStart = System.currentTimeMillis()
+            while (process.isAlive()) {
+                long elapsedSeconds = Math.round((System.currentTimeMillis() - processStart) / 1000.0) as long
+                markStatus("Running Python segmentation for ROI ${roiNumber}/${selected.size()}", "Elapsed ${elapsedSeconds}s. QuPath remains usable while this runs.")
+                Thread.sleep(2000L)
+            }
+            int exitCode = process.waitFor()
+            readerThread.join(5000L)
+            def processOutput = outputBuffer.toString()
+            logFile << processOutput << "\n"
+
+            if (exitCode != 0) {
+                throw new RuntimeException("Prototype 1 failed for ROI ${roiNumber}; see log: ${logFile}")
+            }
+            completeStep("Python segmentation complete for ROI ${roiNumber}/${selected.size()}", "")
+
+            markStatus("Loading Prototype 1 output for ROI ${roiNumber}/${selected.size()}", "Reading GeoJSON and summary files.")
+            def matcher = Pattern.compile("QuPath GeoJSON:\\s*(.+)").matcher(processOutput)
+            if (!matcher.find()) {
+                throw new RuntimeException("Prototype 1 completed but did not report a GeoJSON path for ROI ${roiNumber}; see log: ${logFile}")
+            }
+            def geojsonFile = new File(matcher.group(1).trim())
+            if (!geojsonFile.isAbsolute()) {
+                geojsonFile = new File(prototypeRoot, matcher.group(1).trim())
+            }
+            if (!geojsonFile.exists()) {
+                throw new FileNotFoundException("Prototype 1 GeoJSON not found: " + geojsonFile)
+            }
+
+            def summary = readPrototypeSummary(geojsonFile)
+            def objects = readPrototypeObjects(geojsonFile, importCells, importNuclei, importAsDetections, pixelAreaMicrons)
+            completeStep("Loaded Prototype 1 output for ROI ${roiNumber}/${selected.size()}", "${objects.size()} objects ready to import.")
+
+            markStatus("Importing ROI ${roiNumber}/${selected.size()} into QuPath", "${objects.size()} objects. QuPath may pause briefly here.")
+            runOnFxAndWait {
+                addObjects(objects)
+                addPrototypeSummaryMeasurements(obj, summary, pixelWidthMicrons, pixelHeightMicrons, pixelAreaMicrons)
+            }
+            completeStep("Imported ROI ${roiNumber}/${selected.size()} into QuPath", "${objects.size()} objects.")
+
+            if (exportBeforeAfter) {
+                markStatus("Writing before/after PNGs for ROI ${roiNumber}/${selected.size()}", "")
+                def beforeFile = new File(previewDir, "${imageName}_roi${roiNumber}_before.png")
+                def afterFile = new File(previewDir, "${imageName}_roi${roiNumber}_after.png")
+                Files.copy(tileFile.toPath(), beforeFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                writeAnnotatedPreview(tileFile, afterFile, objects, x0, y0)
+                logFile << "Before PNG: ${beforeFile}\n"
+                logFile << "After PNG: ${afterFile}\n"
+            }
+            if (showStatisticsDashboard && !summary.isEmpty()) {
+                markStatus("Writing statistics dashboard for ROI ${roiNumber}/${selected.size()}", "")
+                def dashboardFile = new File(dashboardDir, "${imageName}_roi${roiNumber}_statistics_dashboard.png")
+                writeStatisticsDashboard(dashboardFile, summary, roiNumber, server.getMetadata().getName(), pixelAreaMicrons)
+                dashboardFiles.add(dashboardFile)
+                logFile << "Statistics dashboard PNG: ${dashboardFile}\n"
+            }
+            completeStep("Finished exports for ROI ${roiNumber}/${selected.size()}", "")
+
+            importedObjects.addAll(objects)
+            importedTotal += objects.size()
+            processed.add([roi: roiNumber, tile: tileFile, geojson: geojsonFile, objects: objects.size()])
+            logFile << "Imported ${objects.size()} objects from ${geojsonFile}\n\n"
+        }
+
+        markStatus("Finalizing Prototype 1 results", "")
+        runOnFxAndWait {
+            fireHierarchyUpdate()
+            if (selectImported && !importedObjects.isEmpty()) {
+                hierarchy.getSelectionModel().selectObjects(importedObjects)
+            }
+        }
+        if (canShowDialog && !dashboardFiles.isEmpty()) {
+            Platform.runLater {
+                showStatisticsDashboardDialog(dashboardFiles[0])
+            }
+        }
+        updatePrototypeStatus(statusWindow, 1.0, "Prototype 1 complete", "Imported ${importedTotal} objects from ${processed.size()} ROI(s). Output: ${runRoot}")
+        print "Prototype 1 complete. Imported ${importedTotal} objects from ${processed.size()} ROI(s). Output: ${runRoot}"
+    } catch (Throwable throwable) {
+        try {
+            logFile << "\nERROR: ${throwable.getClass().getName()}: ${throwable.getMessage()}\n"
+            throwable.getStackTrace().each { logFile << "  at ${it}\n" }
+        } catch (Throwable ignored) {
+            // Keep the original failure visible even if logging fails.
+        }
+        updatePrototypeStatus(statusWindow, 1.0, "Prototype 1 failed", "${throwable.getMessage()}\nLog: ${logFile}")
+        showPrototypeError(canShowDialog, "Prototype 1 failed", "${throwable.getMessage()}\n\nLog: ${logFile}")
+    }
+}, "Prototype1-QuPath-run")
+worker.setDaemon(true)
+worker.start()
+print "Prototype 1 started in the background. Status window: ${runRoot}"
+return
+
+def createPrototypeStatusWindow(int roiCount, File runRoot) {
+    return runOnFxAndWait {
+        def title = new javafx.scene.control.Label("Prototype 1 is running")
+        title.setStyle("-fx-font-size: 16px; -fx-font-weight: bold;")
+
+        def phase = new javafx.scene.control.Label("Starting")
+        phase.setStyle("-fx-font-size: 13px; -fx-font-weight: bold;")
+        phase.setWrapText(true)
+
+        def detail = new javafx.scene.control.Label("Run folder: ${runRoot}")
+        detail.setWrapText(true)
+
+        def progress = new javafx.scene.control.ProgressBar(0.0)
+        progress.setPrefWidth(520.0)
+
+        def log = new javafx.scene.control.TextArea()
+        log.setEditable(false)
+        log.setWrapText(true)
+        log.setPrefRowCount(8)
+        log.setText("Ready to process ${roiCount} ROI(s).\n")
+
+        def footer = new javafx.scene.control.Label("You can leave this window open while QuPath continues running.")
+        footer.setWrapText(true)
+        footer.setStyle("-fx-text-fill: #64748b;")
+
+        def layout = new javafx.scene.layout.VBox(10.0, title, phase, detail, progress, log, footer)
+        layout.setPadding(new javafx.geometry.Insets(14.0))
+        layout.setPrefWidth(560.0)
+
+        def stage = new javafx.stage.Stage()
+        stage.setTitle("Prototype 1 status")
+        stage.setScene(new javafx.scene.Scene(layout))
+        stage.setResizable(true)
+        stage.show()
+
+        return [stage: stage, phase: phase, detail: detail, progress: progress, log: log]
+    }
+}
+
+def updatePrototypeStatus(def statusWindow, double progressValue, String phaseText, String detailText) {
+    if (statusWindow == null) {
         return
     }
-    if ((long) w * (long) h > maxRegionPixels) {
-        throw new IllegalArgumentException("ROI ${index + 1} is too large (${w} x ${h}). Use a smaller annotation, ideally tile-sized.")
+    double safeProgress = Math.max(0.0, Math.min(1.0, progressValue))
+    def timestamp = new SimpleDateFormat("HH:mm:ss").format(new Date())
+    def safeDetail = detailText ?: ""
+    Platform.runLater {
+        try {
+            statusWindow.progress.setProgress(safeProgress)
+            statusWindow.phase.setText(phaseText)
+            statusWindow.detail.setText(safeDetail)
+            def compactDetail = safeDetail.replaceAll(/\s+/, " ").trim()
+            def line = compactDetail.isEmpty()
+                    ? "${timestamp}  ${phaseText}\n"
+                    : "${timestamp}  ${phaseText} - ${compactDetail}\n"
+            statusWindow.log.appendText(line)
+        } catch (Throwable ignored) {
+            return
+        }
     }
-
-    def tileFile = new File(tileDir, "${imageName}_roi${index + 1}_x${x0}_y${y0}_w${w}_h${h}.png")
-    def request = RegionRequest.createInstance(server.getPath(), 1.0, x0, y0, w, h)
-    writeImageRegion(server, request, tileFile.getAbsolutePath())
-    logFile << "Exported ROI ${index + 1}: ${tileFile}\n"
-
-    def command = [
-            pythonExe.getAbsolutePath(),
-            pipelineScript.getAbsolutePath(),
-            tileFile.getAbsolutePath(),
-            "--output-root",
-            processedRoot.getAbsolutePath(),
-            "--x-offset",
-            Integer.toString(x0),
-            "--y-offset",
-            Integer.toString(y0)
-    ]
-    logFile << "Command: ${command.join(' ')}\n"
-
-    def process = new ProcessBuilder(command)
-            .directory(prototypeRoot)
-            .redirectErrorStream(true)
-            .start()
-    def processOutput = process.getInputStream().getText("UTF-8")
-    int exitCode = process.waitFor()
-    logFile << processOutput << "\n"
-
-    if (exitCode != 0) {
-        throw new RuntimeException("Prototype 1 failed for ROI ${index + 1}; see log: ${logFile}")
-    }
-
-    def matcher = Pattern.compile("QuPath GeoJSON:\\s*(.+)").matcher(processOutput)
-    if (!matcher.find()) {
-        throw new RuntimeException("Prototype 1 completed but did not report a GeoJSON path for ROI ${index + 1}; see log: ${logFile}")
-    }
-    def geojsonFile = new File(matcher.group(1).trim())
-    if (!geojsonFile.isAbsolute()) {
-        geojsonFile = new File(prototypeRoot, matcher.group(1).trim())
-    }
-    if (!geojsonFile.exists()) {
-        throw new FileNotFoundException("Prototype 1 GeoJSON not found: " + geojsonFile)
-    }
-
-    def summary = readPrototypeSummary(geojsonFile)
-    def objects = readPrototypeObjects(geojsonFile, importCells, importNuclei, importAsDetections, pixelAreaMicrons)
-    addObjects(objects)
-    addPrototypeSummaryMeasurements(obj, summary, pixelWidthMicrons, pixelHeightMicrons, pixelAreaMicrons)
-    if (exportBeforeAfter) {
-        def beforeFile = new File(previewDir, "${imageName}_roi${index + 1}_before.png")
-        def afterFile = new File(previewDir, "${imageName}_roi${index + 1}_after.png")
-        Files.copy(tileFile.toPath(), beforeFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        writeAnnotatedPreview(tileFile, afterFile, objects, x0, y0)
-        logFile << "Before PNG: ${beforeFile}\n"
-        logFile << "After PNG: ${afterFile}\n"
-    }
-    if (showStatisticsDashboard && !summary.isEmpty()) {
-        def dashboardFile = new File(dashboardDir, "${imageName}_roi${index + 1}_statistics_dashboard.png")
-        writeStatisticsDashboard(dashboardFile, summary, index + 1, server.getMetadata().getName(), pixelAreaMicrons)
-        dashboardFiles.add(dashboardFile)
-        logFile << "Statistics dashboard PNG: ${dashboardFile}\n"
-    }
-    importedObjects.addAll(objects)
-    importedTotal += objects.size()
-    processed.add([roi: index + 1, tile: tileFile, geojson: geojsonFile, objects: objects.size()])
-    logFile << "Imported ${objects.size()} objects from ${geojsonFile}\n\n"
 }
 
-fireHierarchyUpdate()
-if (selectImported && !importedObjects.isEmpty()) {
-    hierarchy.getSelectionModel().selectObjects(importedObjects)
+def showPrototypeError(boolean canShowDialog, String title, String message) {
+    if (!canShowDialog) {
+        return
+    }
+    Platform.runLater {
+        PrototypeDialogs.showErrorMessage(title, message)
+    }
 }
-if (canShowDialog && !dashboardFiles.isEmpty()) {
-    showStatisticsDashboardDialog(dashboardFiles[0])
+
+def runOnFxAndWait(Closure action) {
+    if (Platform.isFxApplicationThread()) {
+        return action.call()
+    }
+    def latch = new CountDownLatch(1)
+    def result = new AtomicReference()
+    def failure = new AtomicReference()
+    Platform.runLater {
+        try {
+            result.set(action.call())
+        } catch (Throwable throwable) {
+            failure.set(throwable)
+        } finally {
+            latch.countDown()
+        }
+    }
+    latch.await()
+    if (failure.get() != null) {
+        throw failure.get()
+    }
+    return result.get()
 }
-print "Prototype 1 complete. Imported ${importedTotal} objects from ${processed.size()} ROI(s). Output: ${runRoot}"
 
 def readPrototypeObjects(File geojsonFile, boolean includeCells, boolean includeNuclei, boolean asDetections, double pixelAreaMicrons) {
     def features = readGeoJsonProperties(geojsonFile)

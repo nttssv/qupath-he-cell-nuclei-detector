@@ -29,6 +29,12 @@ Check:
 - The selected ROI was not too large.
 - `prototype1_qupath_run.log` for the run folder.
 
+## QuPath looks slow during a large run
+
+The `Prototype 1 status` window should continue reporting the current stage. The longest stage is usually Python segmentation; the final import stage can briefly pause QuPath if thousands of cell and nucleus objects are added at once.
+
+For large regions, run smaller ROIs or disable `Import nuclei` when you only need the dashboard and summary measurements.
+
 ## ROI too large
 
 Use smaller annotations. The extension rejects regions larger than `4096 x 4096` pixels by default.

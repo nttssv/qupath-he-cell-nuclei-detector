@@ -11,7 +11,8 @@ For other tissues or stains, use the outputs as exploratory annotations and perf
 3. Select the annotation.
 4. Run `Extensions > Prototype 1 > Run on selected annotation(s)`.
 5. Choose import options in the dialog.
-6. Open `Measure > Show detection measurements`.
+6. Watch the `Prototype 1 status` window. It reports ROI export, Python segmentation, GeoJSON loading, QuPath import, before/after export, dashboard generation, and completion.
+7. Open `Measure > Show detection measurements`.
 
 ## Recommended Options
 
@@ -21,6 +22,12 @@ For other tissues or stains, use the outputs as exploratory annotations and perf
 - `Select imported objects after run`: off unless debugging
 - `Export before/after PNGs`: on when preparing examples or QC reports
 - `Show statistics dashboard`: on when you want the parenchyme/mesenchyme/nuclear/cytoplasm visual summary
+
+## Run Status
+
+Each run opens a non-blocking `Prototype 1 status` window after you confirm the options dialog. The progress bar advances at major pipeline stages, and the text area records the most recent status messages.
+
+During the Python segmentation step, the window updates elapsed time every few seconds. During the final QuPath import step, the main viewer can still pause briefly if thousands of objects are imported at once.
 
 ## Statistics Dashboard
 

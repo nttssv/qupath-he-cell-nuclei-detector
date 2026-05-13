@@ -1,5 +1,11 @@
 # Usage
 
+## Biological Scope
+
+Prototype 1 is tuned for H&E-stained adrenal cortical tissue. It is designed to quantify adrenocortical parenchymal clear-cell and compact-cell morphology, nuclei, mesenchyme/stroma area, and nuclear-to-cytoplasm area balance.
+
+For other tissues or stains, use the outputs as exploratory annotations and perform independent validation.
+
 1. Open an image in QuPath.
 2. Draw an annotation around a small ROI.
 3. Select the annotation.

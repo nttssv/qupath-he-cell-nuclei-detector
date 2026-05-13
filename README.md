@@ -1,8 +1,27 @@
 # QuPath H&E Cell Nuclei Detector
 
-QuPath extension for H&E pathology cell boundary and nuclei detection with area quantification.
+QuPath extension for H&E adrenal cortical cell boundary and nuclei detection with area quantification.
 
 This folder is intentionally scoped for GitHub upload: it contains only the QuPath extension wrapper, the required Prototype 1 Python runner, installation docs, and lightweight project metadata. It does not include notebooks, WSI tiles, random run outputs, presentation files, or local research artifacts.
+
+## Target Tissue and Cell Type
+
+This Prototype 1 extension was developed for **H&E-stained adrenal cortical tissue**, with a focus on **adrenocortical parenchymal cells** showing:
+
+- **Clear-cell / lipid-rich cytoplasm morphology**
+- **Compact / eosinophilic cytoplasm morphology**
+- **Nuclear morphometry and nuclear-to-cytoplasm area balance**
+- **Mesenchyme/stroma versus parenchyme area composition**
+
+The output classes reflect this biology-oriented workflow:
+
+- `Clear cell`
+- `Compact cell`
+- `Uncertain cell`
+- `Nucleus`
+- `Mesenchyme` / `Stroma`
+
+The method should be treated as a tissue-specific research prototype, not a universal cell segmentation model. Additional validation is recommended before applying it to other organs, stains, scanners, or diagnostic cohorts.
 
 ## Features
 
@@ -157,8 +176,8 @@ git commit -m "Release QuPath H&E cell nuclei detector"
 
 Recommended repository description:
 
-> QuPath extension for H&E pathology cell boundary and nuclei detection with area quantification.
+> QuPath extension for H&E adrenal cortical clear/compact cell and nuclei morphometry.
 
 Recommended topics:
 
-`qupath`, `digital-pathology`, `computational-pathology`, `cell-segmentation`, `nuclei-segmentation`, `histology`, `he-staining`
+`qupath`, `digital-pathology`, `computational-pathology`, `adrenal-cortex`, `adrenocortical`, `clear-cell`, `compact-cell`, `cell-segmentation`, `nuclei-segmentation`, `histology`, `he-staining`

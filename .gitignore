@@ -6,5 +6,6 @@ __pycache__/
 build/
 dist/
 qupath_extension_runs/
+image/
 *.jar
 *.log

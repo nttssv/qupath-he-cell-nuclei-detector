@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export COPYFILE_DISABLE=1
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD="$ROOT/build"
@@ -26,19 +27,22 @@ public interface QuPathExtension {
 }
 JAVA
 
+find "$BUILD" -name '._*' -delete 2>/dev/null || true
+
 STUB_SOURCES=()
 while IFS= read -r -d '' file; do
   STUB_SOURCES+=("$file")
-done < <(find "$STUB_SRC" -name '*.java' -print0)
+done < <(find "$STUB_SRC" -name '*.java' ! -name '._*' -print0)
 
 JAVA_SOURCES=()
 while IFS= read -r -d '' file; do
   JAVA_SOURCES+=("$file")
-done < <(find "$ROOT/src/main/java" -name '*.java' -print0)
+done < <(find "$ROOT/src/main/java" -name '*.java' ! -name '._*' -print0)
 
 javac -d "$STUB_CLASSES" "${STUB_SOURCES[@]}"
 javac -cp "$STUB_CLASSES" -d "$CLASSES" "${JAVA_SOURCES[@]}"
 cp -R "$ROOT/src/main/resources/." "$CLASSES/"
+find "$CLASSES" -name '._*' -delete 2>/dev/null || true
 
 jar --create --file "$DIST/qupath-extension-prototype1.jar" -C "$CLASSES" .
 echo "$DIST/qupath-extension-prototype1.jar"
